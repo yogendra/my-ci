@@ -1,0 +1,156 @@
+version: '3'
+services:
+  concourse-db:
+    image: postgres:9.5
+    environment:
+      - POSTGRES_DB=concourse
+      - POSTGRES_USER=concourse
+      - POSTGRES_PASSWORD=concourse   
+    networks:
+      - ci-net
+    volumes:
+      - concourse-db:/var/lib/postgresql
+      - concourse-db-data:/var/lib/postgresql/data
+  concourse-web:
+    image: concourse/concourse
+    # build:
+    #   context: concourse/web
+    command: web
+    depends_on:
+      - concourse-db
+    environment:
+      - CONCOURSE_BASIC_AUTH_USERNAME=admin
+      - CONCOURSE_BASIC_AUTH_PASSWORD=admin
+      - CONCOURSE_EXTERNAL_URL=http://${DOCKER_MACHINE_IP}:8080
+      - CONCOURSE_POSTGRES_HOST=concourse-db
+      - CONCOURSE_POSTGRES_USER=concourse
+      - CONCOURSE_POSTGRES_PASSWORD=concourse
+      - CONCOURSE_POSTGRES_DATABASE=concourse
+      - CONCOURSE_MAIN_TEAM_ALLOW_ALL_USERS=true
+      - CONCOURSE_MAIN_TEAM_LOCAL_USER=admin
+      - CONCOURSE_ADD_LOCAL_USER=admin:admin
+    networks:
+      - ci-net
+    ports: 
+      - "8080:8080"
+    volumes: 
+      - ./concourse/web/keys:/concourse-keys
+  concourse-worker:
+    image: concourse/concourse
+    # build:
+    #   context: concourse/worker
+    command: worker
+    depends_on:
+      - concourse-web
+    environment:
+      - CONCOURSE_TSA_HOST=concourse-web:2222
+    networks:
+      - ci-net
+    privileged: true
+    volumes: 
+      - ./concourse/worker/keys:/concourse-keys
+  artifactory:
+    image: docker.bintray.io/jfrog/artifactory-oss:6.6.5
+    # build:
+      # context: ./artifactory
+
+    depends_on:
+      - artifactory-db
+    environment:
+      - DB_TYPE=postgresql
+      - DB_HOST=artifactory-db
+      - DB_USER=artifactory
+      - DB_PASSWORD=artifactory
+      - DB_URL=jdbc:postgresql://artifactory-db:5432/artifactory
+    networks:
+      - ci-net    
+    ports:
+      - "8081:8081"
+    volumes:
+      - artifactory-data:/var/opt/jfrog/artifactory
+  artifactory-db:
+    image: postgres:9.5
+    environment:
+      - POSTGRES_DB=artifactory
+      - POSTGRES_USER=artifactory
+      - POSTGRES_PASSWORD=artifactory  
+    networks:
+      ci-net:
+        aliases:
+          - postgresql
+
+    volumes:
+      - artifactory-db:/var/lib/postgresql
+      - artifactory-db-data:/var/lib/postgresql/data
+  sonar:
+    image: sonarqube:latest
+    depends_on:
+      - sonar-db
+    environment:
+      - SONARQUBE_JDBC_USERNAME=sonar
+      - SONARQUBE_JDBC_PASSWORD=sonar
+      - SONARQUBE_JDBC_URL=jdbc:postgresql://sonar-db/sonar
+    networks:
+      - ci-net
+    ports:
+      - "9000:9000"
+      - "9092:9092"
+    volumes:
+      - sonar-data:/opt/sonarqube/data
+      - sonar-ext:/opt/sonarqube/extensions
+      - sonar-conf:/opt/sonarqube/conf
+  
+  sonar-db:
+    image: postgres:9.5
+    environment:
+      - POSTGRES_DB=sonar
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar  
+    networks:
+      - ci-net
+    volumes:
+      - sonar-db:/var/lib/postgresql
+      - sonar-db-data:/var/lib/postgresql/data
+  git:
+    image: gogs/gogs
+    depends_on:
+      - git-db
+    networks:
+      - ci-net
+    ports:
+      - "10080:3000"
+      - "10022:22"
+    volumes:
+      - git-data:/data
+      - git-app:/app
+      - ./git/data/gogs/conf/app.ini:/data/gogs/conf/app.ini
+  git-db:
+    image: postgres:9.5
+    environment:
+      - POSTGRES_DB=git
+      - POSTGRES_USER=git
+      - POSTGRES_PASSWORD=git  
+    networks:
+      - ci-net
+    volumes:
+      - git-db:/var/lib/postgresql
+      - git-db-data:/var/lib/postgresql/data
+
+volumes: 
+    concourse-db-data:
+    concourse-db:
+    artifactory-data:
+    artifactory-db-data:
+    artifactory-db:
+    sonar-db-data:
+    sonar-db:
+    sonar-data:
+    sonar-ext:
+    sonar-conf:
+    git-data:
+    git-app:
+    git-db:
+    git-db-data:
+
+networks:
+  ci-net:
